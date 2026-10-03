@@ -44,15 +44,18 @@ command -v rustup >/dev/null 2>&1 || die "rustup not found (cargokit runs 'rustu
 rustup run stable cargo --version >/dev/null 2>&1 || die "Rust stable toolchain missing. Run: rustup toolchain install stable"
 command -v protoc >/dev/null 2>&1 || die "protoc not found. Run: brew install protobuf"
 
-if [[ -x /usr/libexec/java_home ]] && jh="$(/usr/libexec/java_home -v 21 2>/dev/null)"; then
-  export JAVA_HOME="$jh"
-elif [[ -d /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home ]]; then
-  export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
-else
-  die "Java 21 not found. Run: brew install openjdk@21"
-fi
+# /usr/libexec/java_home -v 21 silently returns another JDK when 21 isn't registered there
+# (e.g. Homebrew's keg-only openjdk@21), so check each candidate's actual version.
+is_java21() { [[ -x "$1/bin/java" ]] && "$1/bin/java" -version 2>&1 | head -n1 | grep -q '"21\.'; }
+JAVA_HOME_21=""
+for jh in "${JAVA_HOME:-}" \
+          "$(/usr/libexec/java_home -v 21 2>/dev/null || true)" \
+          /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home; do
+  if [[ -n "$jh" ]] && is_java21 "$jh"; then JAVA_HOME_21="$jh"; break; fi
+done
+[[ -n "$JAVA_HOME_21" ]] || die "Java 21 not found. Run: brew install openjdk@21"
+export JAVA_HOME="$JAVA_HOME_21"
 export PATH="$JAVA_HOME/bin:$PATH"
-"$JAVA_HOME/bin/java" -version 2>&1 | head -n1 | grep -q '"21\.' || die "JAVA_HOME=$JAVA_HOME is not Java 21. Run: brew install openjdk@21"
 
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 [[ -d "$ANDROID_HOME" ]] || die "Android SDK not found at $ANDROID_HOME (set ANDROID_HOME or install via Android Studio)"
