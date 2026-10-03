@@ -18,6 +18,37 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// Fixed signing key for the alpha flavor, so alpha builds update over each other.
+// Source priority: ALPHA_* env vars, then ALPHA_KEY_PROPERTIES / ~/keys/openbubbles-alpha/key.properties.
+// Falls back to the default signing behaviour when not fully available.
+def alphaSigning = null
+def alphaSigningSource = null
+def alphaEnv = [System.getenv('ALPHA_KEYSTORE_FILE'), System.getenv('ALPHA_KEYSTORE_PASSWORD'),
+                System.getenv('ALPHA_KEY_ALIAS'), System.getenv('ALPHA_KEY_PASSWORD')]
+if (alphaEnv.every { it }) {
+    alphaSigning = [storeFile: new File(alphaEnv[0]), storePassword: alphaEnv[1], keyAlias: alphaEnv[2], keyPassword: alphaEnv[3]]
+    alphaSigningSource = 'environment variables'
+} else {
+    def alphaPropsFile = new File(System.getenv('ALPHA_KEY_PROPERTIES') ?: "${System.getProperty('user.home')}/keys/openbubbles-alpha/key.properties")
+    if (alphaPropsFile.isFile()) {
+        def p = new Properties()
+        alphaPropsFile.withInputStream { p.load(it) }
+        if (['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].every { p.getProperty(it) }) {
+            def f = new File(p.getProperty('storeFile'))
+            if (!f.isAbsolute()) f = new File(alphaPropsFile.parentFile, p.getProperty('storeFile'))
+            alphaSigning = [storeFile: f, storePassword: p.getProperty('storePassword'), keyAlias: p.getProperty('keyAlias'), keyPassword: p.getProperty('keyPassword')]
+            alphaSigningSource = alphaPropsFile.path
+        }
+    }
+}
+if (alphaSigning != null && !alphaSigning.storeFile.isFile()) {
+    logger.lifecycle("Alpha signing: keystore ${alphaSigning.storeFile} from ${alphaSigningSource} not found")
+    alphaSigning = null
+}
+logger.lifecycle(alphaSigning != null
+        ? "Alpha signing: using fixed key from ${alphaSigningSource}"
+        : "Alpha signing: no fixed key found, falling back to default signing (debug key for debug builds)")
+
 def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
 if (flutterVersionCode == null) {
     flutterVersionCode = '1'
@@ -65,6 +96,14 @@ android {
         }
         debug {
 
+        }
+        if (alphaSigning != null) {
+            alpha {
+                storeFile alphaSigning.storeFile
+                storePassword alphaSigning.storePassword
+                keyAlias alphaSigning.keyAlias
+                keyPassword alphaSigning.keyPassword
+            }
         }
     }
 
@@ -137,6 +176,15 @@ android {
 
 flutter {
     source '../..'
+}
+
+// buildType signingConfig (debug) wins over flavor signingConfig, so override per variant.
+if (alphaSigning != null) {
+    androidComponents {
+        onVariants(selector().withFlavor(new kotlin.Pair("app", "alpha"))) { variant ->
+            variant.signingConfig?.setConfig(android.signingConfigs.alpha)
+        }
+    }
 }
 
 // For Cloud Firestore okio error
