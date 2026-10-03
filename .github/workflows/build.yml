@@ -82,8 +82,12 @@ jobs:
         run: |
           flutter build apk --flavor alpha --debug --target-platform android-arm64
 
+      # minSdk 24 means v2/v3 signatures only, so keytool -printcert can't read it; use apksigner.
       - name: Print APK signer certificate
-        run: keytool -printcert -jarfile build/app/outputs/flutter-apk/app-alpha-debug.apk | grep -i sha256
+        continue-on-error: true
+        run: |
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)apksigner"
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-alpha-debug.apk | grep -i "SHA-256"
       
       - uses: actions/upload-artifact@v4
         with:

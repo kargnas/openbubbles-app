@@ -52,6 +52,7 @@ else
   die "Java 21 not found. Run: brew install openjdk@21"
 fi
 export PATH="$JAVA_HOME/bin:$PATH"
+"$JAVA_HOME/bin/java" -version 2>&1 | head -n1 | grep -q '"21\.' || die "JAVA_HOME=$JAVA_HOME is not Java 21. Run: brew install openjdk@21"
 
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 [[ -d "$ANDROID_HOME" ]] || die "Android SDK not found at $ANDROID_HOME (set ANDROID_HOME or install via Android Studio)"
@@ -100,7 +101,13 @@ elapsed=$((SECONDS - start))
 echo
 echo "Built in $((elapsed / 60))m $((elapsed % 60))s"
 echo "APK: $REPO_ROOT/$apk"
-keytool -printcert -jarfile "$apk" | grep -i sha256 || warn "could not read signer certificate"
+# minSdk 24 means v2/v3 signatures only (no META-INF), so use apksigner rather than keytool.
+apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ 2>/dev/null | sort -V | tail -n1)apksigner"
+if [[ -x "$apksigner" ]]; then
+  "$apksigner" verify --print-certs "$apk" | grep -i 'SHA-256' || warn "could not read signer certificate"
+else
+  warn "apksigner not found under $ANDROID_HOME/build-tools; skipping signer check"
+fi
 
 # --- Optional install (never uninstalls) ---
 if [[ $install == 1 ]]; then
