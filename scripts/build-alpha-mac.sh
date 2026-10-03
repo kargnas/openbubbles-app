@@ -40,6 +40,11 @@ else
   die "Flutter $FLUTTER_VERSION not found. Install fvm (brew install fvm) or put flutter on PATH."
 fi
 
+# Put rustup's proxies (rustc/cargo) first: cargo resolves `rustc` from PATH, and a Homebrew
+# `rust` formula there has no Android std, which fails with "can't find crate for `core`".
+for d in /opt/homebrew/opt/rustup/bin /usr/local/opt/rustup/bin "$HOME/.cargo/bin"; do
+  if [[ -x "$d/rustc" ]]; then export PATH="$d:$PATH"; break; fi
+done
 command -v rustup >/dev/null 2>&1 || die "rustup not found (cargokit runs 'rustup run stable cargo'). Install from https://rustup.rs"
 rustup run stable cargo --version >/dev/null 2>&1 || die "Rust stable toolchain missing. Run: rustup toolchain install stable"
 command -v protoc >/dev/null 2>&1 || die "protoc not found. Run: brew install protobuf"
