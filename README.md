@@ -34,3 +34,23 @@ If you need help setting up the app, have any issues or feature requests, or jus
 ## Getting Started
 
 [Quickstart](https://openbubbles.app/quickstart.html)
+
+## Building the Alpha APK (this fork)
+
+The default build path is an Apple Silicon Mac; GitHub Actions is the fallback/CI build.
+
+```sh
+scripts/build-alpha-mac.sh                  # build build/app/outputs/flutter-apk/app-alpha-debug.apk
+scripts/build-alpha-mac.sh --install        # build, then adb install -r (never uninstalls)
+scripts/build-alpha-mac.sh --install SERIAL # same, for a specific adb device
+```
+
+Prerequisites: Flutter 3.24.0 (via [fvm](https://fvm.app), pinned in `.fvmrc`, or `flutter` on PATH), rustup with the stable toolchain, `protoc` (`brew install protobuf`), Java 21 (`brew install openjdk@21`) and the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`). The script initialises submodules over HTTPS and creates the fake Fairplay certs.
+
+**Signing.** Alpha builds are signed with a fixed key so new builds install over the old one. The key lives outside the repo in `~/keys/openbubbles-alpha/` with a `key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; `storeFile` may be relative to that directory). Backups of the key exist outside the repo. Gradle can also take the key from `ALPHA_KEYSTORE_FILE` / `ALPHA_KEYSTORE_PASSWORD` / `ALPHA_KEY_ALIAS` / `ALPHA_KEY_PASSWORD`, or from a `key.properties` at `ALPHA_KEY_PROPERTIES`. Without a key it falls back to the default debug key (the script refuses unless `ALLOW_DEBUG_KEY=1`).
+
+In GitHub Actions, set the secrets `ALPHA_KEYSTORE_BASE64` (base64 of the keystore), `ALPHA_KEYSTORE_PASSWORD`, `ALPHA_KEY_ALIAS` and `ALPHA_KEY_PASSWORD`. Without them (e.g. PRs from forks) CI builds with the debug key. The build log prints the signer SHA-256.
+
+The Alpha package `com.bluebubbles.messaging.alpha` installs side by side with the Play Store app `com.openbubbles.messaging`.
+
+> **Warning:** if the Alpha key is lost, the installed Alpha cannot be updated. It has to be uninstalled and reinstalled, which loses its data: Apple sign-in and iMessage registration must be redone.
