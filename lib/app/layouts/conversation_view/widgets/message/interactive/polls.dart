@@ -169,7 +169,6 @@ class _PollsState extends OptimizedState<Polls> with AutomaticKeepAliveClientMix
   PollMessage decodePollMessage(String url) {
     var d = Uri.parse(url);
     var u = utf8.decode(base64Decode(d.path.substring(1)));
-    print(u);
     return pollMessageFromJson(u);
   }
 

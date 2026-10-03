@@ -44,12 +44,13 @@ class _AttachmentHolderState extends CustomState<AttachmentHolder, void, Message
   String? get audioTranscript => getAudioTranscriptsFromAttributedBody(message.attributedBody)[part.part];
   late dynamic content;
   late bool selected = controller.cvController?.isSelected(message.guid!) ?? false;
+  Worker? selectedWorker;
 
   @override
   void initState() {
     forceDelete = false;
     if (controller.cvController != null && !iOS) {
-      ever<List<Message>>(controller.cvController!.selected, (event) {
+      selectedWorker = ever<List<Message>>(controller.cvController!.selected, (event) {
         if (controller.cvController!.isSelected(message.guid!) && !selected) {
           setState(() {
             selected = true;
@@ -63,6 +64,12 @@ class _AttachmentHolderState extends CustomState<AttachmentHolder, void, Message
     }
     super.initState();
     updateContent();
+  }
+
+  @override
+  void dispose() {
+    selectedWorker?.dispose();
+    super.dispose();
   }
 
 

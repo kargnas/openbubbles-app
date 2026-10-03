@@ -6,7 +6,6 @@ import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/misc/m
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/timestamp/delivered_indicator.dart';
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
-import 'package:bluebubbles/database/database.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:collection/collection.dart';
@@ -31,7 +30,7 @@ class MessageWidgetController extends StatefulController with GetSingleTickerPro
   String? newMessageGuid;
   ConversationViewController? cvController;
   late final String tag;
-  late final StreamSubscription? sub;
+  StreamSubscription? sub;
   bool built = false;
 
   static const maxBubbleSizeFactor = 0.75;
@@ -49,24 +48,8 @@ class MessageWidgetController extends StatefulController with GetSingleTickerPro
   void onInit() {
     super.onInit();
     buildMessageParts();
-    if (!kIsWeb && message.id != null) {
-      print("listening ${message.id}");
-      final messageQuery = Database.messages.query(Message_.id.equals(message.id!)).watch();
-      sub = messageQuery.listen((Query<Message> query) async {
-        if (message.id == null) return;
-        final _message = await runAsync(() {
-          return Database.messages.get(message.id!);
-        });
-        if (_message != null) {
-          if (_message.hasAttachments) {
-            _message.attachments = List<Attachment>.from(_message.dbAttachments);
-          }
-          _message.associatedMessages = message.associatedMessages;
-          _message.handle = _message.getHandle();
-          updateMessage(_message);
-        }
-      });
-    } else if (kIsWeb) {
+    // on native, DB updates are delivered by the chat-level watcher in MessagesService
+    if (kIsWeb) {
       sub = WebListeners.messageUpdate.listen((tuple) {
         final _message = tuple.item1;
         final tempGuid = tuple.item2;
@@ -92,6 +75,17 @@ class MessageWidgetController extends StatefulController with GetSingleTickerPro
   }
 
 
+
+  /// Mirrors the branches of [updateMessage] so the chat watcher can skip
+  /// the (sync) attachment / handle lookups for unchanged messages
+  bool needsUpdate(Message newItem) =>
+      (newItem.guid != message.guid && message.guid!.contains("temp")) ||
+      newItem.dateDelivered != message.dateDelivered ||
+      newItem.dateRead != message.dateRead ||
+      newItem.didNotifyRecipient != message.didNotifyRecipient ||
+      newItem.dateEdited != message.dateEdited ||
+      message.dateScheduled != null ||
+      newItem.error != message.error;
 
   void updateMessage(Message newItem) {
     final chat = message.chat.target?.guid ?? cvController?.chat.guid ?? cm.activeChat!.chat.guid;

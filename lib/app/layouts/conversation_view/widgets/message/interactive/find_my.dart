@@ -63,7 +63,6 @@ class _FindMyState extends OptimizedState<FindMy> with AutomaticKeepAliveClientM
     var uri = Uri.parse(data.url!.replaceAll("+", "%2B"));
     var dataKey = base64.decode(uri.queryParameters["FindMyMessagePayloadZippedDataKey"]!);
     var decoded = json.decode(utf8.decode(ZLibCodec(raw: true).decode(dataKey)));
-    print(decoded);
     if (decoded["kind"]?["request"] != null) {
       isRequest = true;
       return;
@@ -206,7 +205,6 @@ class _FindMyState extends OptimizedState<FindMy> with AutomaticKeepAliveClientM
       mapController.move(LatLng(userPosition[mainLocation]!.latitude!, userPosition[mainLocation]!.longitude!), 15);
     }
 
-    print(userPosition);
     setState(() {});
   }
 

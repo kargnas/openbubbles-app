@@ -5,7 +5,6 @@ import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/reaction/reaction_clipper.dart';
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
-import 'package:bluebubbles/database/database.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:defer_pointer/defer_pointer.dart';
@@ -34,8 +33,7 @@ class ReactionWidget extends StatefulWidget {
 
 class ReactionWidgetState extends OptimizedState<ReactionWidget> {
   late Message reaction = widget.reaction;
-  late final StreamSubscription sub;
-  bool hasStream = false;
+  StreamSubscription? sub;
 
   List<Message>? get reactions => widget.reactions;
   bool get reactionIsFromMe => reaction.isFromMe!;
@@ -50,29 +48,10 @@ class ReactionWidgetState extends OptimizedState<ReactionWidget> {
   void initState() {
     super.initState();
     updateReaction();
+    // on native, reaction updates come from the chat watcher via the parent's
+    // MessageWidgetController.updateAssociatedMessage -> didUpdateWidget
     updateObx(() {
-      if (!kIsWeb && widget.message != null) {
-        final messageQuery = Database.messages.query(Message_.id.equals(reaction.id!)).watch();
-        sub = messageQuery.listen((Query<Message> query) async {
-          final _message = await runAsync(() {
-            return Database.messages.get(reaction.id!);
-          });
-          if (_message != null) {
-            if (_message.guid != reaction.guid || _message.dateDelivered != reaction.dateDelivered) {
-              setState(() {
-                reaction = _message;
-                updateReaction();
-              });
-            } else {
-              reaction = _message;
-              updateReaction();
-            }
-            getActiveMwc(widget.message!.guid!)?.updateAssociatedMessage(reaction, updateHolder: false);
-          }
-        });
-
-        hasStream = true;
-      } else if (kIsWeb && widget.message != null) {
+      if (kIsWeb && widget.message != null) {
         sub = WebListeners.messageUpdate.listen((tuple) {
           final _message = tuple.item1;
           final tempGuid = tuple.item2;
@@ -86,6 +65,15 @@ class ReactionWidgetState extends OptimizedState<ReactionWidget> {
         });
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ReactionWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reaction != widget.reaction) {
+      reaction = widget.reaction;
+      updateReaction();
+    }
   }
 
   Future<void> checkImage(Attachment attachment) async {
@@ -125,7 +113,7 @@ class ReactionWidgetState extends OptimizedState<ReactionWidget> {
 
   @override
   void dispose() {
-    if (!kIsWeb && hasStream) sub.cancel();
+    sub?.cancel();
     super.dispose();
   }
 

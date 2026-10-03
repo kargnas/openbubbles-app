@@ -298,6 +298,8 @@ class ConversationViewController extends StatefulController with GetSingleTicker
     }
     if (tmpData == null) {
       queued.item4.complete(Uint8List.fromList([]));
+      // keep draining the queue, otherwise every later image waits forever
+      await _processNextImage();
       return;
     }
     imageData[attachment.guid!] = tmpData;

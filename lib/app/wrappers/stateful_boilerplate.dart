@@ -43,6 +43,10 @@ abstract class CustomState<T extends CustomStateful, R, S extends StatefulContro
   /// Set forceDelete false if needed
   set forceDelete(bool fd) => _forceDelete = fd;
 
+  /// controller our [updateWidget] was registered on, so dispose removes it
+  /// from the same one even if the widget was rebuilt with another controller
+  late final StatefulController _registeredController;
+
   @override
   @mustCallSuper
   void initState() {
@@ -54,8 +58,9 @@ abstract class CustomState<T extends CustomStateful, R, S extends StatefulContro
     if (widget.parentController.updateWidgetFunctions.isEmpty) {
       widget.parentController.updateObx = updateObx;
     }
-    widget.parentController.updateWidgetFunctions[T] ??= [];
-    widget.parentController.updateWidgetFunctions[T]!.add(updateWidget);
+    _registeredController = widget.parentController;
+    _registeredController.updateWidgetFunctions[T] ??= [];
+    _registeredController.updateWidgetFunctions[T]!.add(updateWidget);
 
     // complete the completer when we know the page animation has finished
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
@@ -83,6 +88,9 @@ abstract class CustomState<T extends CustomStateful, R, S extends StatefulContro
   /// Force delete the [GetxController] when the page has disposed (unless we
   /// don't want to)
   void dispose() {
+    // tear-offs of the same method on the same State are equal, so this only
+    // removes our own callback
+    _registeredController.updateWidgetFunctions[T]?.remove(updateWidget);
     if (_forceDelete) Get.delete<S>(tag: _tag);
     super.dispose();
   }

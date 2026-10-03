@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
@@ -36,6 +37,8 @@ class _TextBubbleState extends CustomState<TextBubble, void, MessageWidgetContro
   late MovieTween tween;
   Control anim = Control.stop;
   late bool selected = controller.cvController?.isSelected(message.guid!) ?? false;
+  StreamSubscription? eventSub;
+  Worker? selectedWorker;
 
   @override
   void initState() {
@@ -53,7 +56,7 @@ class _TextBubbleState extends CustomState<TextBubble, void, MessageWidgetContro
         ..scene(begin: Duration.zero, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut)
             .tween("size", 1.0.tweenTo(1.0));
     }
-    eventDispatcher.stream.listen((event) async {
+    eventSub = eventDispatcher.stream.listen((event) async {
       if (event.item1 == 'play-bubble-effect' && event.item2 == '${part.part}/${message.guid}' && effect == MessageEffect.gentle) {
         setState(() {
           anim = Control.playFromStart;
@@ -61,7 +64,7 @@ class _TextBubbleState extends CustomState<TextBubble, void, MessageWidgetContro
       }
     });
     if (controller.cvController != null && !iOS) {
-      ever<List<Message>>(controller.cvController!.selected, (event) {
+      selectedWorker = ever<List<Message>>(controller.cvController!.selected, (event) {
         if (controller.cvController!.isSelected(message.guid!) && !selected) {
           setState(() {
             selected = true;
@@ -74,6 +77,13 @@ class _TextBubbleState extends CustomState<TextBubble, void, MessageWidgetContro
       });
     }
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    eventSub?.cancel();
+    selectedWorker?.dispose();
+    super.dispose();
   }
 
   List<Color> getBubbleColors() {

@@ -408,7 +408,8 @@ class AttachmentsService extends GetxService {
 
     Uint8List previewData = await originalFile.readAsBytes();
 
-    if (attachment.width != null || attachment.height != null) {
+    // only measure when the size isn't known yet
+    if (attachment.width == null || attachment.height == null) {
       if (attachment.mimeType == "image/gif") {
         try {
           Size size = getGifDimensions(previewData);
