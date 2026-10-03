@@ -34,6 +34,7 @@ class MessagesService extends GetxController {
   int lastMaxId = 0;
   bool _dbChangeRunning = false;
   bool _dbChangePending = false;
+  bool _changedWhileFetching = false;
   bool isFetching = false;
   bool _init = false;
   String? method;
@@ -62,7 +63,11 @@ class MessagesService extends GetxController {
         // one watcher per chat: ObjectBox only reports that the Message box
         // changed, so new and updated messages are both resolved off the UI
         // isolate in [_onDbChange]
-        countSub = Database.messages.query().watch(triggerImmediately: true).listen((_) => _onDbChange());
+        countSub = Database.messages.query().watch(triggerImmediately: true).listen((_) {
+          // record at event time: the coalesced async sync may run after isFetching resets
+          _changedWhileFetching |= isFetching;
+          _onDbChange();
+        });
       } else if (kIsWeb) {
         countSub = WebListeners.newMessage.listen((tuple) {
           if (tuple.item2?.guid == chat.guid) {
@@ -117,11 +122,11 @@ class MessagesService extends GetxController {
   }
 
   Future<void> _syncWithDb() async {
+    final changedWhileFetching = _changedWhileFetching;
+    _changedWhileFetching = false;
     if (!ss.settings.finishedSetup.value) return;
-    final wasFetching = isFetching;
     // loaded message controllers (and their reactions) that should get DB updates
-    // ponytail: re-reads every loaded message per Message box write (in a worker
-    // isolate); track changed ids at the write sites if this shows up in profiles
+    // every loaded message is re-read per Message box write (in a worker isolate)
     final controllers = <int, MessageWidgetController>{};
     final reactionParents = <int, MessageWidgetController>{};
     for (Message m in [...struct.messages, ...struct.threadOriginators]) {
@@ -166,7 +171,8 @@ class MessagesService extends GetxController {
 
     // same rules as the old count watcher: ignore inserts made while loading
     // older chunks, and the very first lookup only records the current max
-    if (!wasFetching && !isFetching && lastMaxId != 0) {
+    // also skip if a fetch started while the worker lookup was pending (its inserts may be in newMessages)
+    if (!changedWhileFetching && !_changedWhileFetching && !isFetching && lastMaxId != 0) {
       for (Message message in newMessages.reversed) {
         await _handleNewMessage(message);
       }
