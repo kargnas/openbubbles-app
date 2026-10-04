@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -37,16 +39,23 @@ class ContactAvatarWidget extends StatefulWidget {
 class _ContactAvatarWidgetState extends OptimizedState<ContactAvatarWidget> {
   Contact? get contact => widget.contact ?? widget.handle?.contact;
   String get keyPrefix => widget.handle?.address ?? randomString(8);
+  StreamSubscription? eventSub;
 
   @override
   void initState() {
     super.initState();
-    eventDispatcher.stream.listen((event) {
+    eventSub = eventDispatcher.stream.listen((event) {
       if (event.item1 != 'refresh-avatar') return;
       if (event.item2[0] != widget.handle?.address) return;
       widget.handle?.color = event.item2[1];
       setState(() {});
     });
+  }
+
+  @override
+  void dispose() {
+    eventSub?.cancel();
+    super.dispose();
   }
 
   void onAvatarTap() async {

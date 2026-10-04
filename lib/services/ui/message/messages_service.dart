@@ -5,6 +5,7 @@ import 'package:bluebubbles/helpers/types/constants.dart';
 import 'package:bluebubbles/database/database.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
+import 'package:bluebubbles/utils/logger/logger.dart';
 import 'package:collection/collection.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -29,7 +30,11 @@ class MessagesService extends GetxController {
   final String tag;
   MessagesService(this.tag);
 
-  int currentCount = 0;
+  /// highest message id in this chat seen by [_onDbChange], 0 until known
+  int lastMaxId = 0;
+  bool _dbChangeRunning = false;
+  bool _dbChangePending = false;
+  bool _changedWhileFetching = false;
   bool isFetching = false;
   bool _init = false;
   String? method;
@@ -55,21 +60,13 @@ class MessagesService extends GetxController {
     // watch for new messages
     if (!_init) {
       if (chat.id != null) {
-        final countQuery = (Database.messages.query(Message_.dateDeleted.isNull())
-          ..link(Message_.chat, Chat_.id.equals(chat.id!))
-          ..order(Message_.id, flags: Order.descending)).watch(triggerImmediately: true);
-        countSub = countQuery.listen((event) async {
-          if (!ss.settings.finishedSetup.value) return;
-          final newCount = event.count();
-          if (!isFetching && newCount > currentCount && currentCount != 0) {
-            event.limit = newCount - currentCount;
-            final messages = event.find();
-            event.limit = 0;
-            for (Message message in messages) {
-              await _handleNewMessage(message);
-            }
-          }
-          currentCount = newCount;
+        // one watcher per chat: ObjectBox only reports that the Message box
+        // changed, so new and updated messages are both resolved off the UI
+        // isolate in [_onDbChange]
+        countSub = Database.messages.query().watch(triggerImmediately: true).listen((_) {
+          // record at event time: the coalesced async sync may run after isFetching resets
+          _changedWhileFetching |= isFetching;
+          _onDbChange();
         });
       } else if (kIsWeb) {
         countSub = WebListeners.newMessage.listen((tuple) {
@@ -103,6 +100,84 @@ class MessagesService extends GetxController {
   void reload() {
     Get.put<String>(tag, tag: 'lastReloadedChat');
     Get.reload<MessagesService>(tag: tag);
+  }
+
+  /// Coalesces bursts of DB writes so only one lookup is in flight at a time
+  Future<void> _onDbChange() async {
+    if (_dbChangeRunning) {
+      _dbChangePending = true;
+      return;
+    }
+    _dbChangeRunning = true;
+    try {
+      do {
+        _dbChangePending = false;
+        await _syncWithDb();
+      } while (_dbChangePending && _init);
+    } catch (e, s) {
+      Logger.error("Failed to sync chat messages with the DB", error: e, trace: s);
+    } finally {
+      _dbChangeRunning = false;
+    }
+  }
+
+  Future<void> _syncWithDb() async {
+    final changedWhileFetching = _changedWhileFetching;
+    _changedWhileFetching = false;
+    if (!ss.settings.finishedSetup.value) return;
+    // loaded message controllers (and their reactions) that should get DB updates
+    // every loaded message is re-read per Message box write (in a worker isolate)
+    final controllers = <int, MessageWidgetController>{};
+    final reactionParents = <int, MessageWidgetController>{};
+    for (Message m in [...struct.messages, ...struct.threadOriginators]) {
+      final c = getActiveMwc(m.guid!);
+      if (c == null || c.message.id == null) continue;
+      controllers[c.message.id!] = c;
+      for (Message r in c.message.associatedMessages) {
+        if (r.id != null) reactionParents[r.id!] = c;
+      }
+    }
+    final ids = [...controllers.keys, ...reactionParents.keys];
+    final args = (chat.id!, lastMaxId, ids);
+    late final (List<Message>, List<Message?>, int) result;
+    try {
+      result = await Database.store.runAsync(_fetchChatChanges, args);
+    } catch (e, s) {
+      Logger.warn("Async chat message lookup failed, falling back to sync", error: e, trace: s);
+      result = _fetchChatChanges(Database.store, args);
+    }
+    if (!_init) return;
+    final (newMessages, loaded, maxId) = result;
+
+    for (int i = 0; i < ids.length; i++) {
+      final fresh = loaded[i];
+      if (fresh == null) continue;
+      final c = controllers[ids[i]];
+      if (c != null) {
+        if (!c.needsUpdate(fresh)) continue;
+        if (fresh.hasAttachments) {
+          fresh.attachments = List<Attachment>.from(fresh.dbAttachments);
+        }
+        fresh.associatedMessages = c.message.associatedMessages;
+        fresh.handle = fresh.getHandle();
+        c.updateMessage(fresh);
+      } else {
+        final parent = reactionParents[ids[i]]!;
+        final old = parent.message.associatedMessages.firstWhereOrNull((e) => e.id == fresh.id);
+        if (old != null && fresh.guid == old.guid && fresh.dateDelivered == old.dateDelivered) continue;
+        parent.updateAssociatedMessage(fresh);
+      }
+    }
+
+    // same rules as the old count watcher: ignore inserts made while loading
+    // older chunks, and the very first lookup only records the current max
+    // also skip if a fetch started while the worker lookup was pending (its inserts may be in newMessages)
+    if (!changedWhileFetching && !_changedWhileFetching && !isFetching && lastMaxId != 0) {
+      for (Message message in newMessages.reversed) {
+        await _handleNewMessage(message);
+      }
+    }
+    lastMaxId = maxId;
   }
 
   Future<void> _handleNewMessage(Message message) async {
@@ -271,4 +346,22 @@ class MessagesService extends GetxController {
 
     return completer.future;
   }
+}
+
+/// Runs in an ObjectBox worker isolate, so only use [store] (not [Database]).
+/// Returns messages of the chat newer than lastMaxId (only once lastMaxId is
+/// known), the current state of the requested ids, and the chat's max id.
+(List<Message>, List<Message?>, int) _fetchChatChanges(Store store, (int, int, List<int>) args) {
+  final (chatId, lastMaxId, ids) = args;
+  final box = store.box<Message>();
+  return store.runInTransaction(TxMode.read, () {
+    final query = (box.query(Message_.dateDeleted.isNull().and(Message_.id.greaterThan(lastMaxId)))
+          ..link(Message_.chat, Chat_.id.equals(chatId))
+          ..order(Message_.id))
+        .build();
+    final newIds = query.findIds();
+    query.close();
+    final newMessages = lastMaxId == 0 ? <Message>[] : box.getMany(newIds).whereNotNull().toList();
+    return (newMessages, box.getMany(ids), newIds.lastOrNull ?? lastMaxId);
+  });
 }

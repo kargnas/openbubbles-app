@@ -12,6 +12,7 @@ class ChatMessages {
   List<Message> get messages => _messages.values.toList();
   List<Message> get reactions => _reactions.values.toList();
   List<Attachment> get attachments => _attachments.values.toList();
+  Iterable<Message> get threadOriginators => _threads.entries.map((e) => e.value[e.key]).whereType<Message>();
   List<Message> threads(String originatorGuid, int originatorPart, {bool returnOriginator = true}) =>
       _threads[originatorGuid]?.values.where((e) =>
       (e.normalizedThreadPart == originatorPart && e.guid != originatorGuid) || (returnOriginator ? e.guid == originatorGuid : false)).toList() ?? [];
