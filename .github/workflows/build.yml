@@ -4,6 +4,9 @@ jobs:
   build:
     name: OpenBubbles APK
     runs-on: ubuntu-latest
+    env:
+      # Empty for PRs from forks; the decode step is then skipped and gradle uses the debug key.
+      ALPHA_KEYSTORE_BASE64: ${{ secrets.ALPHA_KEYSTORE_BASE64 }}
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -64,10 +67,27 @@ jobs:
               cp rustpush/certs/legacy-fairplay/fairplay.crt rustpush/certs/fairplay/$name.crt
           done
 
+      - name: Decode Alpha signing key
+        if: env.ALPHA_KEYSTORE_BASE64 != ''
+        run: |
+          echo "$ALPHA_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/openbubbles-alpha.jks"
+          echo "ALPHA_KEYSTORE_FILE=$RUNNER_TEMP/openbubbles-alpha.jks" >> "$GITHUB_ENV"
+
       # First run is expected to fail until ffmpeg_kit_flutter_new is fixed.
       - name: Run Build Script
+        env:
+          ALPHA_KEYSTORE_PASSWORD: ${{ secrets.ALPHA_KEYSTORE_PASSWORD }}
+          ALPHA_KEY_ALIAS: ${{ secrets.ALPHA_KEY_ALIAS }}
+          ALPHA_KEY_PASSWORD: ${{ secrets.ALPHA_KEY_PASSWORD }}
         run: |
           flutter build apk --flavor alpha --debug --target-platform android-arm64
+
+      # minSdk 24 means v2/v3 signatures only, so keytool -printcert can't read it; use apksigner.
+      - name: Print APK signer certificate
+        continue-on-error: true
+        run: |
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)apksigner"
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-alpha-debug.apk | grep -i "SHA-256"
       
       - uses: actions/upload-artifact@v4
         with:
