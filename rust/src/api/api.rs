@@ -7,7 +7,9 @@ use flutter_rust_bridge::{DartFnFuture, IntoDart, JoinHandle, frb};
 #[cfg(not(target_os = "android"))]
 use keystore::software::{SoftwareEncryptor, SoftwareKeystore};
 use keystore::{AesKeystoreKey, EcCurve, EcKeystoreKey, EncryptMode, KeystoreAccessRules, KeystoreDigest, KeystoreEncryptKey, KeystorePadding, RsaKey, init_keystore, keystore};
-pub use rustpush::{default_provider, ArcAnisetteClient, LoginClientInfo, DefaultAnisetteProvider};
+pub use rustpush::{ArcAnisetteClient, LoginClientInfo};
+pub use crate::anisette::default_provider;
+pub type DefaultAnisetteProvider = crate::anisette::FallbackAnisetteProvider;
 use log::{debug, error, info, warn};
 use plist::{Data, Dictionary};
 pub use plist::Value;
