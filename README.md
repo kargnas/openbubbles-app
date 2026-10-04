@@ -40,12 +40,14 @@ If you need help setting up the app, have any issues or feature requests, or jus
 The default build path is an Apple Silicon Mac; GitHub Actions is the fallback/CI build.
 
 ```sh
-scripts/build-alpha-mac.sh                  # build build/app/outputs/flutter-apk/app-alpha-debug.apk
+scripts/build-alpha-mac.sh                  # debug build: build/app/outputs/flutter-apk/app-alpha-debug.apk
+scripts/build-alpha-mac.sh --release        # release build (AOT, smooth): app-alpha-release.apk
 scripts/build-alpha-mac.sh --install        # build, then adb install -r (never uninstalls)
 scripts/build-alpha-mac.sh --install SERIAL # same, for a specific adb device
+scripts/build-alpha-mac.sh --release --install SERIAL
 ```
 
-Prerequisites: Flutter 3.24.0 (via [fvm](https://fvm.app), pinned in `.fvmrc`, or `flutter` on PATH), rustup with the stable toolchain, `protoc` (`brew install protobuf`), Java 21 (`brew install openjdk@21`) and the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`) with `cmdline-tools/latest`, so cargokit can install NDK 26.1.10909125 through `sdkmanager` (or install it yourself: `sdkmanager "ndk;26.1.10909125"`). If a Homebrew `rust` formula is also installed, the script puts rustup's `rustc` first on PATH. A warm build takes about 5 minutes on an M4 MacBook Pro. The script initialises submodules over HTTPS and creates the fake Fairplay certs.
+Prerequisites: Flutter 3.24.0 (via [fvm](https://fvm.app), pinned in `.fvmrc`, or `flutter` on PATH), rustup with the stable toolchain, `protoc` (`brew install protobuf`), Java 21 (`brew install openjdk@21`) and the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`) with `cmdline-tools/latest`, so cargokit can install NDK 26.1.10909125 through `sdkmanager` (or install it yourself: `sdkmanager "ndk;26.1.10909125"`). If a Homebrew `rust` formula is also installed, the script puts rustup's `rustc` first on PATH. A warm build takes about 5 minutes on an M4 MacBook Pro. Debug builds run Dart in JIT mode and are visibly janky (e.g. animations), so use `--release` for an APK you actually use on a phone; both are signed with the same fixed key and install over each other. The script initialises submodules over HTTPS and creates the fake Fairplay certs.
 
 **Signing.** Alpha builds are signed with a fixed key so new builds install over the old one. The key lives outside the repo in `~/keys/openbubbles-alpha/` with a `key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; `storeFile` may be relative to that directory). Backups of the key exist outside the repo. Gradle can also take the key from `ALPHA_KEYSTORE_FILE` / `ALPHA_KEYSTORE_PASSWORD` / `ALPHA_KEY_ALIAS` / `ALPHA_KEY_PASSWORD`, or from a `key.properties` at `ALPHA_KEY_PROPERTIES`. Without a key it falls back to the default debug key (the script refuses unless `ALLOW_DEBUG_KEY=1`).
 

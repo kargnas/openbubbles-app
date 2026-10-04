@@ -2,7 +2,9 @@
 # Build the OpenBubbles Alpha APK (com.bluebubbles.messaging.alpha) on an Apple Silicon Mac,
 # signed with the fixed Alpha key so it installs over previous Alpha builds.
 #
-# Usage: scripts/build-alpha-mac.sh [--install [adb-serial]] [extra flutter build args...]
+# Usage: scripts/build-alpha-mac.sh [--release] [--install [adb-serial]] [extra flutter build args...]
+#   --release             release (AOT, non-debuggable) build instead of the default debug build.
+#                         Debug builds run Dart in JIT mode and jank; use --release on a real phone.
 #   ALPHA_KEY_PROPERTIES  key.properties path (default ~/keys/openbubbles-alpha/key.properties)
 #   ALLOW_DEBUG_KEY=1     build with the default debug key if the fixed key is missing
 set -euo pipefail
@@ -15,10 +17,12 @@ die() { echo "error: $*" >&2; exit 1; }
 warn() { echo "warning: $*" >&2; }
 
 install=0
+mode=debug
 serial=""
 flutter_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --release) mode=release ;;
     --install)
       install=1
       if [[ $# -gt 1 && "$2" != -* ]]; then serial="$2"; shift; fi
@@ -101,9 +105,9 @@ for name in "${cert_names[@]}"; do
 done
 
 # --- Build ---
-apk="build/app/outputs/flutter-apk/app-alpha-debug.apk"
+apk="build/app/outputs/flutter-apk/app-alpha-$mode.apk"
 start=$SECONDS
-"${FLUTTER[@]}" build apk --flavor alpha --debug --target-platform android-arm64 ${flutter_args[@]+"${flutter_args[@]}"}
+"${FLUTTER[@]}" build apk --flavor alpha "--$mode" --target-platform android-arm64 ${flutter_args[@]+"${flutter_args[@]}"}
 elapsed=$((SECONDS - start))
 
 echo
