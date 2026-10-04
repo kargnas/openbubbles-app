@@ -23,8 +23,6 @@ const APPLE_ROOT: &[u8] = include_bytes!("../../rustpush/apple-private-apis/iclo
 
 const SERVERS: &[&str] = &[
     "https://ani.sidestore.zip",
-    "https://ani.846969.xyz",
-    "https://ani.npeg.us",
     "https://ani.sidestore.app",
     "https://ani.sidestore.io",
 ];
@@ -402,7 +400,8 @@ mod tests {
 
     #[test]
     fn server_order_puts_preferred_first() {
-        assert_eq!(server_order(0).iter().map(|s| s.0).collect::<Vec<_>>(), vec![0, 1, 2, 3, 4]);
-        assert_eq!(server_order(3).iter().map(|s| s.0).collect::<Vec<_>>(), vec![3, 0, 1, 2, 4]);
+        assert_eq!(server_order(0).iter().map(|s| s.0).collect::<Vec<_>>(), vec![0, 1, 2]);
+        assert_eq!(server_order(1).iter().map(|s| s.0).collect::<Vec<_>>(), vec![1, 0, 2]);
+        assert_eq!(server_order(2).iter().map(|s| s.0).collect::<Vec<_>>(), vec![2, 0, 1]);
     }
 }
