@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:gesture_x_detector/gesture_x_detector.dart';
 import 'package:get/get.dart';
 import 'package:image/image.dart' as img;
+import 'package:permission_handler/permission_handler.dart' show openAppSettings;
 import 'package:universal_io/io.dart';
 
 class BackButton extends StatelessWidget {
@@ -366,6 +367,21 @@ void showSnackbar(String title, String message, {int animationMs = 250, int dura
         (GetSnackBar bar) {
           if (Get.isSnackbarOpen) Get.back();
         },
+  );
+}
+
+void showCameraDeniedSnackbar() {
+  showSnackbar(
+    "Camera access needed",
+    "OpenBubbles needs Camera access to take photos and videos.",
+    durationMs: 5000,
+    button: TextButton(
+      style: TextButton.styleFrom(
+        backgroundColor: Get.theme.colorScheme.surfaceVariant,
+      ),
+      onPressed: () => openAppSettings(),
+      child: Text("OPEN SETTINGS", style: TextStyle(color: Get.theme.colorScheme.onSurfaceVariant)),
+    ),
   );
 }
 
