@@ -39,8 +39,10 @@ class AttachmentPicker extends StatefulWidget {
   State<AttachmentPicker> createState() => AttachmentPickerState();
 }
 
-class AttachmentPickerState extends OptimizedState<AttachmentPicker> {
+class AttachmentPickerState extends OptimizedState<AttachmentPicker> with WidgetsBindingObserver {
   List<AssetEntity> _images = <AssetEntity>[];
+  bool _noMediaAccess = false;
+  bool _openedMediaSettings = false;
 
   ConversationViewController get controller => widget.controller;
 
@@ -297,8 +299,29 @@ class AttachmentPickerState extends OptimizedState<AttachmentPicker> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     getAttachments();
     generateIcons();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // re-check media access when coming back from the system settings
+    if (state == AppLifecycleState.resumed && _openedMediaSettings) {
+      _openedMediaSettings = false;
+      getAttachments();
+    }
+  }
+
+  Future<void> openMediaSettings() async {
+    _openedMediaSettings = true;
+    await PhotoManager.openSetting();
   }
 
   Future<void> getAttachments() async {
@@ -306,10 +329,12 @@ class AttachmentPickerState extends OptimizedState<AttachmentPicker> {
     // wait for opening animation to complete
     await Future.delayed(const Duration(milliseconds: 250));
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    if (!mounted) return;
     if (!ps.hasAccess) {
-      showSnackbar("Error", "Storage permission not granted!");
+      setState(() => _noMediaAccess = true);
       return;
     }
+    _noMediaAccess = false;
     List<AssetPathEntity> list = await PhotoManager.getAssetPathList(onlyAll: true);
     if (list.isNotEmpty) {
       _images = await list.first.getAssetListRange(start: 0, end: 24);
@@ -332,10 +357,7 @@ class AttachmentPickerState extends OptimizedState<AttachmentPicker> {
   Future<void> openFullCamera({String type = 'camera'}) async {
     bool granted = (await Permission.camera.request()).isGranted;
     if (!granted) {
-      showSnackbar(
-        "Error",
-        "Camera access was denied!"
-      );
+      showCameraDeniedSnackbar();
       return;
     }
 
@@ -529,6 +551,37 @@ class AttachmentPickerState extends OptimizedState<AttachmentPicker> {
                       )
                     ),
                     const SliverPadding(padding: EdgeInsets.only(left: 5, right: 5)),
+                    if (_noMediaAccess)
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        width: 220,
+                        child: Center(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(
+                                  iOS ? CupertinoIcons.photo_on_rectangle : Icons.photo_library_outlined,
+                                  color: context.theme.colorScheme.properOnSurface,
+                                ),
+                                const SizedBox(height: 8.0),
+                                Text(
+                                  "OpenBubbles needs Photos and videos access to show your recent photos.",
+                                  textAlign: TextAlign.center,
+                                  style: context.theme.textTheme.bodyMedium!.copyWith(color: context.theme.colorScheme.properOnSurface),
+                                ),
+                                const SizedBox(height: 8.0),
+                                TextButton(
+                                  onPressed: openMediaSettings,
+                                  child: Text("Open settings", style: context.theme.textTheme.bodyLarge!.copyWith(color: context.theme.colorScheme.primary)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!_noMediaAccess)
                     SliverGrid(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,

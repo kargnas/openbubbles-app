@@ -372,7 +372,7 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
   Future<void> openFullCamera({String type = 'camera'}) async {
     bool granted = (await Permission.camera.request()).isGranted;
     if (!granted) {
-      showSnackbar("Error", "Camera access was denied!");
+      showCameraDeniedSnackbar();
       return;
     }
 
